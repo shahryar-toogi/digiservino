@@ -1,0 +1,16 @@
+/*
+Theme Name: DigiServino SaaS Theme
+Theme URI: https://example.com
+Author: DigiServino Team
+Author URI: https://example.com
+Description: A custom SaaS dashboard theme for IT Services.
+Version: 1.0
+Text Domain: digi-servino-theme
+*/
+
+/* Basic Reset */
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #f3f4f6;
+}
