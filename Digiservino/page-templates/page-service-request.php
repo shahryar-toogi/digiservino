@@ -1,128 +1,119 @@
 <?php
-/* Template Name: Service Request Form */
-if (!is_user_logged_in()) { auth_redirect(); }
-get_header(); 
-?>
+/* Template Name: Service Request */
+if (!is_user_logged_in()) { wp_redirect(home_url('/my-account')); exit; }
 
-<div class="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8" x-data="serviceRequest()">
-    <div class="max-w-3xl mx-auto">
+$success_msg = false;
+$error_msg = false;
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['ds_submit_request'])) {
+    
+    $request_id = wp_insert_post([
+        'post_title'   => "درخواست " . sanitize_text_field($_POST['service_type']),
+        'post_type'    => 'ds_ticket',
+        'post_status'  => 'pending',
+        'post_author'  => get_current_user_id(),
+    ]);
+
+    if ($request_id) {
+        update_post_meta($request_id, '_is_service_request', '1');
+        update_post_meta($request_id, '_service_type', sanitize_text_field($_POST['service_type']));
+        update_post_meta($request_id, '_visit_address', sanitize_textarea_field($_POST['address']));
+        update_post_meta($request_id, '_visit_date', sanitize_text_field($_POST['visit_date']));
         
-        <div class="text-center mb-10">
-            <h1 class="text-3xl font-extrabold text-gray-900">Open Service Request</h1>
-            <p class="mt-2 text-sm text-gray-600">Tell us what's wrong, and we'll fix it.</p>
-        </div>
-
-        <div class="bg-white shadow-xl rounded-lg overflow-hidden">
-            <div class="bg-gray-200 h-2 w-full">
-                <div class="bg-blue-600 h-2 transition-all duration-300" :style="'width: ' + (step * 33) + '%'"></div>
-            </div>
-
-            <form @submit.prevent="submitForm" class="p-8">
+        $amount = 50000; 
+        $callback = home_url('/payment-verify');
+        
+        if (function_exists('ds_request_payment')) {
+            $payment_url = ds_request_payment($amount, "پرداخت بیعانه درخواست #" . $request_id, $callback);
+            
+            if ($payment_url) {
+                // استخراج مطمئن Authority
+                $parts = explode('/', rtrim($payment_url, '/'));
+                $authority = end($parts);
                 
-                <div x-show="step === 1">
-                    <h2 class="text-xl font-bold mb-6 text-gray-800">1. Select Service Type</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <template x-for="type in types">
-                            <div @click="formData.category = type.id; step = 2"
-                                 class="cursor-pointer border-2 rounded-lg p-6 hover:border-blue-500 hover:bg-blue-50 transition flex items-center space-x-4">
-                                <div class="text-3xl" x-text="type.icon"></div>
-                                <div>
-                                    <h3 class="font-bold text-gray-900" x-text="type.name"></h3>
-                                    <p class="text-xs text-gray-500" x-text="type.desc"></p>
+                update_post_meta($request_id, '_pending_authority', $authority);
+                update_post_meta($request_id, '_pending_amount', $amount);
+
+                // ریدایرکت ترکیبی برای اطمینان
+                if (!headers_sent()) {
+                    wp_redirect($payment_url);
+                    exit;
+                } else {
+                    echo '<script type="text/javascript">window.location.href="' . $payment_url . '";</script>';
+                    exit;
+                }
+            } else {
+                $error_msg = "خطا در اتصال به درگاه زرین‌پال. لطفاً مرچنت‌آیدی را در functions.php چک کنید.";
+            }
+        } else {
+            $error_msg = "سیستم پرداخت در دسترس نیست (تابع تعریف نشده).";
+        }
+    }
+}
+get_header(); ?>
+
+<div class="min-h-screen bg-gray-50 flex flex-col md:flex-row" dir="rtl" x-data="{ step: 1, selectedService: '' }">
+    <?php include(get_template_directory() . '/parts/dashboard-sidebar.php'); ?>
+
+    <main class="flex-1 p-6 md:p-12">
+        <div class="max-w-4xl mx-auto">
+            
+            <?php if($error_msg): ?>
+                <div class="bg-red-100 text-red-600 p-6 rounded-3xl mb-8 border border-red-200 font-bold">
+                    <?php echo $error_msg; ?>
+                </div>
+            <?php endif; ?>
+
+            <form method="POST" class="space-y-8">
+                <div x-show="step === 1" x-transition>
+                    <h2 class="text-3xl font-black mb-8 text-gray-800">کدام خدمت را نیاز دارید؟</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <?php 
+                        $services = [
+                            ['id' => 'cctv', 'title' => 'نصب دوربین مداربسته', 'icon' => '📹'],
+                            ['id' => 'network', 'title' => 'خدمات شبکه و سرور', 'icon' => '🌐'],
+                            ['id' => 'voip', 'title' => 'راه اندازی ویپ (VOIP)', 'icon' => '📞'],
+                            ['id' => 'hardware', 'title' => 'تعمیرات سخت‌افزار', 'icon' => '💻'],
+                            ['id' => 'software', 'title' => 'پشتیبانی نرم‌افزار', 'icon' => '⚙️'],
+                            ['id' => 'ups', 'title' => 'برق اضطراری و UPS', 'icon' => '⚡']
+                        ];
+                        foreach($services as $s): ?>
+                            <label class="cursor-pointer group">
+                                <input type="radio" name="service_type" value="<?php echo $s['title']; ?>" 
+                                       @click="selectedService = '<?php echo $s['title']; ?>'; step = 2" class="sr-only">
+                                <div class="bg-white p-8 rounded-3xl border-2 border-transparent hover:border-indigo-600 hover:shadow-xl transition-all text-center">
+                                    <div class="text-4xl mb-4 group-hover:scale-110 transition-transform"><?php echo $s['icon']; ?></div>
+                                    <div class="font-bold text-gray-700"><?php echo $s['title']; ?></div>
                                 </div>
-                            </div>
-                        </template>
+                            </label>
+                        <?php endforeach; ?>
                     </div>
                 </div>
 
-                <div x-show="step === 2">
-                    <h2 class="text-xl font-bold mb-6 text-gray-800">2. Issue Details</h2>
+                <div x-show="step === 2" x-transition x-cloak class="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+                    <button type="button" @click="step = 1" class="text-indigo-600 font-bold mb-6 flex items-center gap-2 hover:underline">
+                        <span>→</span> تغییر نوع خدمت (<span x-text="selectedService" class="text-gray-900"></span>)
+                    </button>
                     
-                    <div class="mb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">Subject</label>
-                        <input type="text" x-model="formData.subject" class="w-full p-3 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., Laptop won't turn on">
-                    </div>
-
-                    <div class="mb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">Description</label>
-                        <textarea x-model="formData.description" class="w-full p-3 border rounded h-32 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Please describe the issue..."></textarea>
-                    </div>
-
-                    <div class="mb-6">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">Priority</label>
-                        <select x-model="formData.priority" class="w-full p-3 border rounded bg-white">
-                            <option value="low">Low - Routine Maintainence</option>
-                            <option value="normal">Normal - Standard Issue</option>
-                            <option value="high">High - Work Stoppage</option>
-                        </select>
-                    </div>
-
-                    <div class="flex justify-between">
-                        <button type="button" @click="step = 1" class="text-gray-500 hover:text-gray-800">Back</button>
-                        <button type="button" @click="step = 3" class="bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700">Next Step</button>
-                    </div>
-                </div>
-
-                <div x-show="step === 3">
-                    <h2 class="text-xl font-bold mb-6 text-gray-800">3. Remote Access</h2>
-                    
-                    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
-                        <div class="flex">
-                            <div class="ml-3">
-                                <p class="text-sm text-yellow-700">
-                                    Do you authorize our technicians to remotely connect to your device if needed?
-                                </p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div>
+                            <label class="block mb-3 font-bold text-gray-700">آدرس دقیق جهت اعزام تکنسین</label>
+                            <textarea name="address" rows="4" required placeholder="خیابان، کوچه، پلاک..." 
+                                      class="w-full bg-gray-50 border-0 rounded-2xl p-4 focus:ring-2 focus:ring-indigo-600"></textarea>
+                        </div>
+                        <div class="space-y-6">
+                            <div>
+                                <label class="block mb-3 font-bold text-gray-700">تاریخ پیشنهادی بازدید</label>
+                                <input type="date" name="visit_date" required class="w-full bg-gray-50 border-0 rounded-2xl p-4 focus:ring-2 focus:ring-indigo-600">
                             </div>
+                            <button type="submit" name="ds_submit_request" class="w-full bg-indigo-600 text-white py-5 rounded-2xl font-bold text-lg shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition">
+                                تایید و پرداخت کارشناسی (۵۰,۰۰۰ ت)
+                            </button>
                         </div>
                     </div>
-
-                    <label class="flex items-center space-x-3 mb-8 p-4 border rounded cursor-pointer hover:bg-gray-50">
-                        <input type="checkbox" x-model="formData.remote" class="form-checkbox h-6 w-6 text-blue-600">
-                        <span class="font-bold text-gray-700">Yes, I authorize remote access for this ticket.</span>
-                    </label>
-
-                    <div class="flex justify-between items-center">
-                        <button type="button" @click="step = 2" class="text-gray-500 hover:text-gray-800">Back</button>
-                        <button type="submit" class="bg-green-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-green-700 shadow-lg transform hover:-translate-y-1 transition">
-                            <span x-show="!submitting">Submit Ticket</span>
-                            <span x-show="submitting">Processing...</span>
-                        </button>
-                    </div>
                 </div>
-
             </form>
         </div>
-    </div>
+    </main>
 </div>
-
-<script>
-document.addEventListener('alpine:init', () => {
-    Alpine.data('serviceRequest', () => ({
-        step: 1,
-        submitting: false,
-        formData: { category: '', subject: '', description: '', priority: 'normal', remote: false },
-        types: [
-            { id: 'pc', name: 'PC Repair', desc: 'Hardware/Boot issues', icon: '💻' },
-            { id: 'net', name: 'Network', desc: 'WiFi/Server issues', icon: '📡' },
-            { id: 'soft', name: 'Software', desc: 'Installations/Viruses', icon: '💿' },
-            { id: 'cctv', name: 'CCTV', desc: 'Surveillance Systems', icon: '📹' }
-        ],
-        async submitForm() {
-            this.submitting = true;
-            try {
-                const res = await fetch(dsSettings.root + 'digi-servino/v1/tickets', {
-                    method: 'POST',
-                    headers: { 'X-WP-Nonce': dsSettings.nonce, 'Content-Type': 'application/json' },
-                    body: JSON.stringify(this.formData)
-                });
-                const data = await res.json();
-                if(data.id) {
-                    window.location.href = '/my-dashboard'; // Redirect to dashboard
-                }
-            } catch (e) { alert('Error submitting ticket'); }
-            this.submitting = false;
-        }
-    }));
-});
-</script>
 <?php get_footer(); ?>

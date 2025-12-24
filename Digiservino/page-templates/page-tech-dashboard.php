@@ -1,86 +1,177 @@
 <?php
-/* Template Name: Technician Dashboard */
-if (!current_user_can('ds_technician') && !current_user_can('administrator')) { wp_redirect(home_url()); exit; }
-get_header(); 
-?>
+/* Template Name: Tech Dashboard */
 
-<div class="min-h-screen bg-gray-900 text-white" x-data="techDashboard()">
-    <div class="flex justify-between items-center p-6 border-b border-gray-700 bg-gray-800">
-        <div class="flex items-center space-x-4">
-            <span class="text-2xl font-bold tracking-tight text-blue-400">DigiServino</span>
-            <span class="px-3 py-1 bg-gray-700 rounded text-xs text-gray-300 uppercase">Tech Portal</span>
-        </div>
-        <div class="flex space-x-4">
-             <div class="text-right">
-                <div class="text-sm font-bold"><?php echo wp_get_current_user()->display_name; ?></div>
-                <div class="text-xs text-green-400">● Online</div>
-             </div>
-        </div>
-    </div>
+$user = wp_get_current_user();
+// اجازه ورود فقط به مدیر و تکنسین
+if (!is_user_logged_in() || !array_intersect(['administrator', 'ds_technician'], (array) $user->roles)) {
+    wp_redirect(home_url('/my-account'));
+    exit;
+}
 
-    <div class="p-8">
-        <div class="flex space-x-4 mb-8">
-            <button @click="filter='all'" :class="filter==='all' ? 'bg-blue-600' : 'bg-gray-700'" class="px-4 py-2 rounded">All Tickets</button>
-            <button @click="filter='open'" :class="filter==='open' ? 'bg-blue-600' : 'bg-gray-700'" class="px-4 py-2 rounded">Open</button>
-            <button @click="filter='urgent'" :class="filter==='urgent' ? 'bg-blue-600' : 'bg-gray-700'" class="px-4 py-2 rounded text-red-300">Urgent</button>
-        </div>
+// کوئری برای گرفتن کاربران (فقط کلاینت‌ها)
+$users = get_users(['role__in' => ['ds_client', 'subscriber']]);
+$all_tickets = get_posts([
+    'post_type' => 'ds_ticket',
+    'posts_per_page' => -1,
+    'post_status' => ['publish', 'processing', 'pending'] // وضعیت‌های مدنظر
+]);
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            <template x-for="ticket in filteredTickets" :key="ticket.id">
-                <div class="bg-gray-800 rounded-lg p-5 border-l-4 hover:bg-gray-750 transition transform hover:-translate-y-1 cursor-pointer shadow-lg"
-                     :class="{
-                        'border-green-500': ticket.status === 'closed',
-                        'border-red-500': ticket.priority === 'high' && ticket.status !== 'closed',
-                        'border-blue-500': ticket.priority !== 'high' && ticket.status !== 'closed'
-                     }">
-                    
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="font-mono text-gray-500 text-sm" x-text="'#'+ticket.id"></span>
-                        <span class="text-xs px-2 py-1 rounded bg-gray-700" x-text="ticket.status"></span>
-                    </div>
+// آماده‌سازی دسته‌بندی‌ها (بخش B)
+$categories = [
+    'cctv' => ['title' => 'دوربین مداربسته', 'icon' => '📹', 'count' => 0],
+    'network' => ['title' => 'شبکه و سرور', 'icon' => '🌐', 'count' => 0],
+    'voip' => ['title' => 'ویپ (VOIP)', 'icon' => '📞', 'count' => 0],
+    'hardware' => ['title' => 'سخت‌افزار', 'icon' => '💻', 'count' => 0],
+    'software' => ['title' => 'نرم‌افزار', 'icon' => '⚙️', 'count' => 0],
+    'ups' => ['title' => 'برق اضطراری', 'icon' => '⚡', 'count' => 0],
+];
 
-                    <h3 class="font-bold text-lg mb-2 truncate" x-text="ticket.subject"></h3>
-                    <p class="text-gray-400 text-sm mb-4 line-clamp-2" x-text="ticket.description"></p>
+// بخش اصلاح شده شمارش در tech-dashboard.php
+foreach($all_tickets as $t) {
+    $service_type = get_post_meta($t->ID, '_service_type', true);
+    foreach($categories as $key => $cat) {
+        // بررسی تطابق نام فارسی خدمت با دیتابیس
+        if(trim($service_type) === trim($cat['title'])) {
+            $categories[$key]['count']++;
+        }
+    }
+}
 
-                    <div class="flex items-center justify-between mt-4 border-t border-gray-700 pt-4">
-                        <div class="flex items-center">
-                            <div class="w-8 h-8 rounded-full bg-blue-900 flex items-center justify-center text-xs font-bold mr-2">
-                                <span x-text="ticket.client_name ? ticket.client_name.substring(0,2) : 'CL'"></span>
-                            </div>
-                        </div>
-                        
-                        <a :href="'/view-ticket/?id=' + ticket.id" class="text-blue-400 hover:text-white text-sm font-bold">Manage &rarr;</a>
-                    </div>
+get_header(); ?>
+
+<div class="min-h-screen bg-gray-900 text-white" dir="rtl" x-data="{ tab: 'users', filterStatus: 'all' }">
+    
+    <header class="bg-gray-800 border-b border-gray-700 p-4 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-4">
+                <div class="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center font-bold">T</div>
+                <div>
+                    <h2 class="font-bold text-sm"><?php echo wp_get_current_user()->display_name; ?></h2>
+                    <p class="text-[10px] text-gray-400">پنل مدیریت تکنسین</p>
                 </div>
-            </template>
+            </div>
+            
+            <nav class="hidden md:flex bg-gray-900 rounded-xl p-1 gap-1">
+                <button @click="tab = 'users'" :class="tab === 'users' ? 'bg-indigo-600' : ''" class="px-4 py-2 rounded-lg text-xs font-bold transition">مانیتورینگ کاربران</button>
+                <button @click="tab = 'cats'" :class="tab === 'cats' ? 'bg-indigo-600' : ''" class="px-4 py-2 rounded-lg text-xs font-bold transition">دسته‌بندی‌ها</button>
+                <button @click="tab = 'list'" :class="tab === 'list' ? 'bg-indigo-600' : ''" class="px-4 py-2 rounded-lg text-xs font-bold transition">کل تیکت‌ها</button>
+            </nav>
+
+            <div class="flex items-center gap-4">
+                <a href="<?php echo home_url('/my-account'); ?>" class="text-xs hover:text-indigo-400">پروفایل</a>
+                <a href="<?php echo wp_logout_url(home_url()); ?>" class="text-xs text-red-400 bg-red-400/10 px-3 py-1 rounded-md">خروج</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto p-6">
+        
+        <div x-show="tab === 'users'" x-transition class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            <?php foreach($users as $u): 
+                $pending_tickets = get_posts([
+                    'post_type' => 'ds_ticket',
+                    'author' => $u->ID,
+                    'post_status' => 'publish', // فرض بر اینکه publish یعنی تیکت باز
+                    'posts_per_page' => 1
+                ]);
+                $has_ticket = !empty($pending_tickets);
+            ?>
+                <div class="relative group">
+                    <a href="<?php echo $has_ticket ? get_edit_post_link($pending_tickets[0]->ID) : '#'; ?>" 
+                       class="block p-6 rounded-2xl border-2 transition-all <?php echo $has_ticket ? 'bg-red-500/10 border-red-500 animate-pulse' : 'bg-green-500/10 border-green-500 opacity-60'; ?> text-center">
+                        <div class="text-3xl mb-2"><?php echo $has_ticket ? '🔔' : '👤'; ?></div>
+                        <div class="font-bold text-xs truncate"><?php echo $u->display_name; ?></div>
+                        <?php if($has_ticket): ?>
+                            <div class="absolute inset-0 bg-red-600 opacity-0 group-hover:opacity-10 transition-opacity rounded-2xl"></div>
+                        <?php endif; ?>
+                    </a>
+                </div>
+            <?php endforeach; ?>
+        </div>
+
+        <div x-show="tab === 'cats'" x-transition class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <?php foreach($categories as $key => $cat): ?>
+                <div class="bg-gray-800 p-8 rounded-3xl border border-gray-700 hover:border-indigo-500 transition-all group">
+                    <div class="text-5xl mb-4 group-hover:scale-110 transition-transform"><?php echo $cat['icon']; ?></div>
+                    <h3 class="text-xl font-black"><?php echo $cat['title']; ?></h3>
+                    <p class="text-indigo-400 mt-2 font-bold"><?php echo $cat['count']; ?> تیکت در این بخش</p>
+                </div>
+            <?php endforeach; ?>
+        </div>
+
+        <div x-show="tab === 'list'" x-transition class="bg-gray-800 rounded-3xl border border-gray-700 overflow-hidden">
+            <div class="p-6 border-b border-gray-700 flex justify-between items-center bg-gray-800/50">
+                <h3 class="font-black text-lg">فیلتر پیشرفته تیکت‌ها</h3>
+                <select x-model="filterStatus" class="bg-gray-900 border-gray-600 rounded-xl px-4 py-2 text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="all">همه تیکت‌ها</option>
+                    <option value="publish">باز (Open)</option>
+                    <option value="processing">در حال انجام</option>
+                    <option value="solved">حل شده</option>
+                    <option value="closed">بسته شده</option>
+                </select>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="w-full text-right text-sm">
+                    <thead class="bg-gray-900/50 text-gray-400 uppercase text-[10px]">
+                        <tr>
+                            <th class="p-4">مشتری</th>
+                            <th class="p-4">موضوع</th>
+                            <th class="p-4">وضعیت</th>
+                            <th class="p-4">ریموت ID</th>
+                            <th class="p-4">عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach($all_tickets as $ticket): 
+                            $status = $ticket->post_status;
+                            $remote_id = get_post_meta($ticket->ID, '_remote_id', true);
+                            $author = get_userdata($ticket->post_author);
+                        ?>
+                            <tr x-show="filterStatus === 'all' || filterStatus === '<?php echo $status; ?>'" 
+                                class="border-b border-gray-700 hover:bg-gray-700/30 transition-colors">
+                                <td class="p-4">
+                                    <div class="font-bold"><?php echo $author->display_name; ?></div>
+                                    <div class="text-[10px] text-gray-500"><?php echo $author->user_email; ?></div>
+                                </td>
+                                <td class="p-4"><?php echo $ticket->post_title; ?></td>
+                                <td class="p-4">
+                                    <span class="px-2 py-1 rounded-md text-[9px] font-bold bg-gray-900 border border-gray-600 uppercase">
+                                        <?php echo $status; ?>
+                                    </span>
+                                </td>
+                                <td class="p-4 font-mono text-indigo-400"><?php echo $remote_id ?: '---'; ?></td>
+                                <td class="p-4">
+                                    <a href="<?php echo get_edit_post_link($ticket->ID); ?>" class="text-indigo-500 hover:underline font-bold">مشاهده جزئیات</a>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </main>
+
+    <?php 
+    $any_red = false;
+    foreach($users as $u) {
+        if(!empty(get_posts(['post_type' => 'ds_ticket', 'author' => $u->ID, 'post_status' => 'publish', 'posts_per_page' => 1]))) {
+            $any_red = true; break;
+        }
+    }
+    if($any_red): ?>
+    <div class="fixed bottom-6 left-6 z-50 animate-bounce shadow-2xl">
+        <div class="bg-red-600 text-white p-5 rounded-2xl flex items-center gap-4">
+            <span class="text-2xl">🚨</span>
+            <div>
+                <p class="font-black text-sm">تیکت جدید شناسایی شد!</p>
+                <p class="text-[10px]">باکس‌های قرمز رنگ را چک کنید.</p>
+            </div>
         </div>
     </div>
+    <?php endif; ?>
+
 </div>
 
-<script>
-document.addEventListener('alpine:init', () => {
-    Alpine.data('techDashboard', () => ({
-        tickets: [],
-        filter: 'all',
-        
-        get filteredTickets() {
-            if (this.filter === 'open') return this.tickets.filter(t => t.status === 'open');
-            if (this.filter === 'urgent') return this.tickets.filter(t => t.priority === 'high');
-            return this.tickets;
-        },
-
-        init() {
-            this.fetchTickets();
-            setInterval(() => this.fetchTickets(), 15000); // Live polling
-        },
-
-        async fetchTickets() {
-            const res = await fetch(dsSettings.root + 'digi-servino/v1/tickets', {
-                headers: { 'X-WP-Nonce': dsSettings.nonce }
-            });
-            this.tickets = await res.json();
-        }
-    }));
-});
-</script>
 <?php get_footer(); ?>

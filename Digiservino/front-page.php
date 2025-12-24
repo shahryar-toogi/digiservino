@@ -1,4 +1,4 @@
-<?php get_header(); ?>
+<?php include get_theme_file_path( 'template-parts/shared/header.php' ); ?>
 
 <div class="bg-white text-right" dir="rtl">
     <section class="relative bg-gray-50 overflow-hidden h-[500px] flex items-center">
@@ -34,7 +34,7 @@
                 <div class="text-4xl mb-4"><?php echo $s['icon']; ?></div>
                 <h3 class="font-bold text-xl mb-2"><?php echo $s['title']; ?></h3>
                 <p class="text-indigo-600 font-bold mb-4"><?php echo $s['price']; ?></p>
-                <button class="w-full py-2 bg-gray-50 text-gray-700 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition font-bold">سفارش آنی</button>
+                <a href="<?php echo home_url('/service-request'); ?>" class="w-full py-2 bg-gray-50 text-gray-700 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition font-bold">سفارش آنی</a>
             </div>
             <?php endforeach; ?>
         </div>
@@ -116,4 +116,4 @@
     </footer>
 </div>
 
-<?php get_footer(); ?>
+<?php include get_theme_file_path( 'template-parts/shared/footer.php' ); ?>
